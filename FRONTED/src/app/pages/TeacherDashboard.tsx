@@ -1,253 +1,173 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, X as XIcon, Calendar, UserCheck, Eye, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { CalendarDays, Users, UserCheck, X } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 
-const studentList = [
-  { id: 'S001', name: 'Arjun Sharma', roll: '01' },
-  { id: 'S002', name: 'Priya Mehta', roll: '02' },
-  { id: 'S003', name: 'Rohit Gupta', roll: '03' },
-  { id: 'S004', name: 'Ananya Singh', roll: '04' },
-  { id: 'S005', name: 'Vikram Nair', roll: '05' },
-  { id: 'S006', name: 'Sneha Patel', roll: '06' },
-  { id: 'S007', name: 'Karan Kapoor', roll: '07' },
-  { id: 'S008', name: 'Divya Reddy', roll: '08' },
-  { id: 'S009', name: 'Aditya Kumar', roll: '09' },
-  { id: 'S010', name: 'Sanya Joshi', roll: '10' },
-  { id: 'S011', name: 'Rahul Verma', roll: '11' },
-  { id: 'S012', name: 'Ishita Desai', roll: '12' },
-  { id: 'S013', name: 'Kunal Rao', roll: '13' },
-  { id: 'S014', name: 'Meera Shah', roll: '14' },
-  { id: 'S015', name: 'Nikhil Jain', roll: '15' },
+type AttendanceStatus = 'P' | 'A';
+
+type DateAttendanceMap = Record<string, Record<string, AttendanceStatus>>;
+
+interface Student {
+  id: string;
+  rollNo: string;
+  name: string;
+  feeStatus: 'Paid' | 'Unpaid';
+  outstandingAmount: number;
+}
+
+const mockStudents: Student[] = [
+  { id: 'S801', rollNo: '01', name: 'Arjun Sharma', feeStatus: 'Paid', outstandingAmount: 0 },
+  { id: 'S802', rollNo: '02', name: 'Priya Mehta', feeStatus: 'Unpaid', outstandingAmount: 7500 },
+  { id: 'S803', rollNo: '03', name: 'Rohit Gupta', feeStatus: 'Paid', outstandingAmount: 0 },
+  { id: 'S804', rollNo: '04', name: 'Ananya Singh', feeStatus: 'Unpaid', outstandingAmount: 12000 },
+  { id: 'S805', rollNo: '05', name: 'Vikram Nair', feeStatus: 'Paid', outstandingAmount: 0 },
+  { id: 'S806', rollNo: '06', name: 'Sneha Patel', feeStatus: 'Unpaid', outstandingAmount: 3000 },
+  { id: 'S807', rollNo: '07', name: 'Karan Kapoor', feeStatus: 'Paid', outstandingAmount: 0 },
+  { id: 'S808', rollNo: '08', name: 'Divya Reddy', feeStatus: 'Paid', outstandingAmount: 0 },
 ];
 
-function GlassCard({ children, className = '', style = {} }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+function GlassCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={className} style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.12)', borderRadius: 16, ...style }}>
+    <div
+      className={className}
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(163,177,138,0.12)',
+        borderRadius: 16,
+      }}
+    >
       {children}
     </div>
   );
 }
 
-interface AttendanceModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  assignedClass: string;
+function formatDate(date: Date) {
+  return date.toISOString().split('T')[0];
 }
 
-function AttendanceModal({ isOpen, onClose, assignedClass }: AttendanceModalProps) {
-  const [attendance, setAttendance] = useState<Record<string, 'P' | 'A'>>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+function getMonthLabel(monthKey: string) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
 
-  const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+function AttendanceModal({
+  open,
+  students,
+  assignedClass,
+  todayKey,
+  initialEntries,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  students: Student[];
+  assignedClass: string;
+  todayKey: string;
+  initialEntries: Record<string, AttendanceStatus>;
+  onClose: () => void;
+  onSave: (entries: Record<string, AttendanceStatus>) => void;
+}) {
+  const [entries, setEntries] = useState<Record<string, AttendanceStatus>>(initialEntries);
 
-  const toggleAttendance = (id: string, status: 'P' | 'A') => {
-    setSaved(false);
-    setAttendance(prev => ({ ...prev, [id]: status }));
+  // Re-sync when modal opens for update mode.
+  useEffect(() => setEntries(initialEntries), [initialEntries]);
+
+  const mark = (studentId: string, status: AttendanceStatus) => {
+    setEntries((prev) => ({ ...prev, [studentId]: status }));
   };
 
-  const handleSubmit = async () => {
-    setIsSaving(true);
-    await new Promise(r => setTimeout(r, 800));
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => {
-      onClose();
-      setSaved(false);
-      setAttendance({});
-    }, 1500);
-  };
-
-  const presentCount = studentList.filter(s => attendance[s.id] === 'P').length;
-  const absentCount = studentList.filter(s => attendance[s.id] === 'A').length;
-  const unmarkedCount = studentList.length - presentCount - absentCount;
+  const present = students.filter((s) => entries[s.id] === 'P').length;
+  const absent = students.filter((s) => entries[s.id] === 'A').length;
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/60 z-50"
             onClick={onClose}
           />
-
-          {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-3xl max-h-[85vh] overflow-hidden"
-            style={{ background: 'rgba(15,30,20,0.95)', backdropFilter: 'blur(40px)', border: '1px solid rgba(163,177,138,0.2)', borderRadius: 24 }}
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.97 }}
+            className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-4xl max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden"
+            style={{ background: 'rgba(15,30,20,0.96)', border: '1px solid rgba(163,177,138,0.2)', borderRadius: 20, backdropFilter: 'blur(30px)' }}
           >
-            {/* Header */}
-            <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(163,177,138,0.15)' }}>
+            <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: 'rgba(163,177,138,0.15)' }}>
               <div>
-                <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>Mark Attendance</h2>
-                <div className="flex items-center gap-3 mt-1">
-                  <span style={{ fontSize: 12, color: '#A3B18A' }}>Class {assignedClass}</span>
-                  <span style={{ fontSize: 11, color: 'rgba(163,177,138,0.6)' }}>•</span>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={12} style={{ color: '#588157' }} />
-                    <span style={{ fontSize: 12, color: '#588157', fontWeight: 600 }}>{currentDate}</span>
-                  </div>
-                </div>
+                <h3 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>Mark Attendance</h3>
+                <p style={{ color: '#A3B18A', fontSize: 12 }}>Class {assignedClass} · Date: {todayKey} (auto-filled)</p>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:bg-white/5"
-                style={{ border: '1px solid rgba(163,177,138,0.15)' }}
-              >
-                <XIcon size={16} style={{ color: '#A3B18A' }} />
-              </button>
+              <button onClick={onClose}><X size={18} style={{ color: '#A3B18A' }} /></button>
             </div>
 
-            {/* Info banner */}
-            <div className="mx-6 mt-4 px-3 py-2 rounded-xl flex items-start gap-2" style={{ background: 'rgba(88,129,87,0.15)', border: '1px solid rgba(88,129,87,0.25)' }}>
-              <AlertCircle size={14} style={{ color: '#A3B18A', marginTop: 1, flexShrink: 0 }} />
-              <p style={{ fontSize: 11, color: '#A3B18A', lineHeight: 1.5 }}>
-                You can only mark attendance for today's date. Past or future dates cannot be edited.
-              </p>
-            </div>
-
-            {/* Stats */}
-            <div className="mx-6 mt-3 grid grid-cols-3 gap-2">
-              <div className="px-3 py-2 rounded-xl" style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
-                <p style={{ fontSize: 10, color: 'rgba(74,222,128,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Present</p>
-                <p className="text-white mt-0.5" style={{ fontSize: 18, fontWeight: 700 }}>{presentCount}</p>
-              </div>
-              <div className="px-3 py-2 rounded-xl" style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)' }}>
-                <p style={{ fontSize: 10, color: 'rgba(248,113,113,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absent</p>
-                <p className="text-white mt-0.5" style={{ fontSize: 18, fontWeight: 700 }}>{absentCount}</p>
-              </div>
-              <div className="px-3 py-2 rounded-xl" style={{ background: 'rgba(163,177,138,0.1)', border: '1px solid rgba(163,177,138,0.2)' }}>
-                <p style={{ fontSize: 10, color: 'rgba(163,177,138,0.7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Unmarked</p>
-                <p className="text-white mt-0.5" style={{ fontSize: 18, fontWeight: 700 }}>{unmarkedCount}</p>
-              </div>
-            </div>
-
-            {/* Table container */}
-            <div className="mx-6 mt-4 mb-4 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 280px)' }}>
-              <table className="w-full">
-                <thead className="sticky top-0" style={{ background: 'rgba(15,30,20,0.95)', borderBottom: '1px solid rgba(163,177,138,0.15)' }}>
-                  <tr>
-                    <th className="text-left px-3 py-3" style={{ fontSize: 11, color: '#A3B18A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', width: 80 }}>Roll No.</th>
-                    <th className="text-left px-3 py-3" style={{ fontSize: 11, color: '#A3B18A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Student Name</th>
-                    <th className="text-center px-3 py-3" style={{ fontSize: 11, color: '#A3B18A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', width: 180 }}>Attendance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {studentList.map((student, idx) => {
-                    const status = attendance[student.id];
-                    return (
-                      <tr key={student.id} className="border-b" style={{ borderColor: 'rgba(163,177,138,0.06)' }}>
-                        <td className="px-3 py-3">
-                          <span style={{ fontSize: 13, color: '#A3B18A', fontWeight: 600 }}>{student.roll}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="text-white" style={{ fontSize: 13 }}>{student.name}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => toggleAttendance(student.id, 'P')}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg transition-all"
-                              style={{
-                                background: status === 'P' ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${status === 'P' ? 'rgba(74,222,128,0.5)' : 'rgba(163,177,138,0.1)'}`,
-                                color: status === 'P' ? '#4ade80' : 'rgba(163,177,138,0.5)',
-                                fontSize: 12,
-                                fontWeight: 600
-                              }}
-                            >
-                              <CheckCircle size={13} />
-                              Present
-                            </motion.button>
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => toggleAttendance(student.id, 'A')}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg transition-all"
-                              style={{
-                                background: status === 'A' ? 'rgba(248,113,113,0.25)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${status === 'A' ? 'rgba(248,113,113,0.5)' : 'rgba(163,177,138,0.1)'}`,
-                                color: status === 'A' ? '#f87171' : 'rgba(163,177,138,0.5)',
-                                fontSize: 12,
-                                fontWeight: 600
-                              }}
-                            >
-                              <XIcon size={13} />
-                              Absent
-                            </motion.button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: 'rgba(163,177,138,0.15)' }}>
-              <div>
-                {saved && (
-                  <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
-                    <CheckCircle size={16} style={{ color: '#4ade80' }} />
-                    <span style={{ fontSize: 13, color: '#4ade80', fontWeight: 600 }}>Attendance saved successfully!</span>
-                  </motion.div>
+            <div className="p-5 pt-4">
+              <div className="mb-4 flex gap-3">
+                <span className="px-2 py-1 rounded-lg" style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80', fontSize: 12 }}>Present: {present}</span>
+                <span className="px-2 py-1 rounded-lg" style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', fontSize: 12 }}>Absent: {absent}</span>
+                {Object.keys(initialEntries).length > 0 && (
+                  <span className="px-2 py-1 rounded-lg" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontSize: 12 }}>
+                    Update mode (today's data loaded)
+                  </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.2)', fontSize: 13, color: '#A3B18A', fontWeight: 600 }}
-                >
-                  Cancel
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleSubmit}
-                  disabled={isSaving || saved}
-                  className="px-6 py-2.5 rounded-xl text-white flex items-center gap-2"
-                  style={{
-                    background: saved ? '#3A5A40' : 'linear-gradient(135deg, #588157, #3A5A40)',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    opacity: isSaving ? 0.8 : 1,
-                    boxShadow: '0 4px 16px rgba(88,129,87,0.3)'
-                  }}
-                >
-                  {isSaving ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Saving...
-                    </>
-                  ) : saved ? (
-                    <>
-                      <CheckCircle size={14} />
-                      Saved
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle size={14} />
-                      Save Attendance
-                    </>
-                  )}
-                </motion.button>
+
+              <div className="overflow-auto" style={{ maxHeight: '52vh' }}>
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-left p-2" style={{ color: '#A3B18A', fontSize: 11 }}>Roll Number</th>
+                      <th className="text-left p-2" style={{ color: '#A3B18A', fontSize: 11 }}>Student Name</th>
+                      <th className="text-center p-2" style={{ color: '#A3B18A', fontSize: 11 }}>Attendance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((student) => {
+                      const status = entries[student.id];
+                      return (
+                        <tr key={student.id} style={{ borderTop: '1px solid rgba(163,177,138,0.08)' }}>
+                          <td className="p-2" style={{ color: '#A3B18A' }}>{student.rollNo}</td>
+                          <td className="p-2" style={{ color: '#fff' }}>{student.name}</td>
+                          <td className="p-2">
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => mark(student.id, 'P')}
+                                className="px-3 py-1 rounded-lg"
+                                style={{ background: status === 'P' ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.04)', color: status === 'P' ? '#4ade80' : '#A3B18A' }}
+                              >
+                                Present
+                              </button>
+                              <button
+                                onClick={() => mark(student.id, 'A')}
+                                className="px-3 py-1 rounded-lg"
+                                style={{ background: status === 'A' ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.04)', color: status === 'A' ? '#f87171' : '#A3B18A' }}
+                              >
+                                Absent
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
+            </div>
+
+            <div className="p-5 border-t flex justify-end" style={{ borderColor: 'rgba(163,177,138,0.15)' }}>
+              <button
+                onClick={() => onSave(entries)}
+                className="px-5 py-2 rounded-xl text-white"
+                style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontWeight: 600 }}
+              >
+                Save Attendance
+              </button>
             </div>
           </motion.div>
         </>
@@ -256,158 +176,229 @@ function AttendanceModal({ isOpen, onClose, assignedClass }: AttendanceModalProp
   );
 }
 
+function monthKeyFromOffset(monthOffset = 0) {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1 + monthOffset).padStart(2, '0')}`;
+}
+
 export function TeacherDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
-  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-
-  const assignedClass = '11-A';
   const teacherName = user?.name || 'Teacher';
+  const assignedClass = user?.class || '8 - A';
+
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [attendanceByDate, setAttendanceByDate] = useState<DateAttendanceMap>(() => {
+    const seed: DateAttendanceMap = {};
+    for (let i = 0; i < 50; i += 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = formatDate(d);
+      seed[key] = mockStudents.reduce<Record<string, AttendanceStatus>>((acc, student) => {
+        acc[student.id] = Math.random() > 0.17 ? 'P' : 'A';
+        return acc;
+      }, {});
+    }
+    return seed;
+  });
+
+  const [filterType, setFilterType] = useState<'1m' | '2m' | 'custom'>('1m');
+  const [customMonth, setCustomMonth] = useState(monthKeyFromOffset(0));
+
+  const todayKey = formatDate(new Date());
+  const todayEntries = attendanceByDate[todayKey] || {};
+
+  const selectedStudent = mockStudents.find((s) => s.id === selectedStudentId) || null;
+
+  const handleSaveTodayAttendance = (entries: Record<string, AttendanceStatus>) => {
+    setAttendanceByDate((prev) => ({ ...prev, [todayKey]: { ...entries } }));
+    setAttendanceModalOpen(false);
+    setActiveTab('attendance');
+  };
+
+  const studentAttendanceEntries = useMemo(() => {
+    if (!selectedStudentId) return [] as { date: string; status: AttendanceStatus }[];
+    return Object.entries(attendanceByDate)
+      .map(([date, map]) => ({ date, status: map[selectedStudentId] }))
+      .filter((v): v is { date: string; status: AttendanceStatus } => v.status === 'P' || v.status === 'A')
+      .sort((a, b) => (a.date > b.date ? -1 : 1));
+  }, [attendanceByDate, selectedStudentId]);
+
+  const effectiveMonth = useMemo(() => {
+    if (filterType === 'custom') return customMonth;
+    return monthKeyFromOffset(filterType === '1m' ? 0 : -1);
+  }, [filterType, customMonth]);
+
+  const monthlyEntries = useMemo(() => {
+    return studentAttendanceEntries.filter((item) => item.date.startsWith(effectiveMonth));
+  }, [studentAttendanceEntries, effectiveMonth]);
+
+  const attendancePct = monthlyEntries.length
+    ? Math.round((monthlyEntries.filter((item) => item.status === 'P').length / monthlyEntries.length) * 100)
+    : 0;
+
+  const calendarCells = useMemo(() => {
+    const [year, month] = effectiveMonth.split('-').map(Number);
+    const first = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0).getDate();
+    const startWeekday = first.getDay();
+
+    const statusByDay = monthlyEntries.reduce<Record<number, AttendanceStatus>>((acc, row) => {
+      const day = Number(row.date.split('-')[2]);
+      acc[day] = row.status;
+      return acc;
+    }, {});
+
+    const cells: Array<{ day: number | null; status?: AttendanceStatus }> = [];
+    for (let i = 0; i < startWeekday; i += 1) cells.push({ day: null });
+    for (let d = 1; d <= lastDay; d += 1) cells.push({ day: d, status: statusByDay[d] });
+    while (cells.length % 7 !== 0) cells.push({ day: null });
+    return cells;
+  }, [effectiveMonth, monthlyEntries]);
 
   return (
     <DashboardLayout
       activeTab={activeTab}
       onTabChange={setActiveTab}
       title="Teacher Portal"
-      subtitle={`${teacherName} · Class Teacher of ${assignedClass}`}
+      subtitle={`${teacherName} · Class Teacher: Class ${assignedClass}`}
       notifications={2}
     >
       <div className="space-y-6">
-        {/* Overview */}
         {activeTab === 'overview' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            {/* Welcome header */}
-            <div>
-              <h2 className="text-white" style={{ fontSize: 22, fontWeight: 700 }}>Welcome, {teacherName.split(' ').slice(-1)[0]} 👋</h2>
-              <p style={{ fontSize: 13, color: '#A3B18A', marginTop: 2 }}>Class Teacher · {assignedClass}</p>
-            </div>
-
-            {/* Main action cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
-              <motion.div whileHover={{ y: -4, scale: 1.02 }} transition={{ type: 'spring', stiffness: 300 }}>
-                <GlassCard style={{ padding: 0, overflow: 'hidden' }}>
-                  <div className="p-6">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                      style={{ background: 'rgba(88,129,87,0.2)', border: '1px solid rgba(88,129,87,0.3)' }}>
-                      <UserCheck size={22} style={{ color: '#588157' }} />
-                    </div>
-                    <h3 className="text-white mb-2" style={{ fontSize: 16, fontWeight: 700 }}>Mark Attendance</h3>
-                    <p style={{ fontSize: 13, color: 'rgba(218,215,205,0.6)', lineHeight: 1.6, marginBottom: 16 }}>
-                      Record daily attendance for Class {assignedClass}. Mark students as Present or Absent for today.
-                    </p>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => setShowAttendanceModal(true)}
-                      className="w-full py-3 rounded-xl text-white flex items-center justify-center gap-2"
-                      style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(88,129,87,0.3)' }}
-                    >
-                      <UserCheck size={16} />
-                      Open Attendance
-                    </motion.button>
-                  </div>
-                </GlassCard>
-              </motion.div>
-
-              <motion.div whileHover={{ y: -4, scale: 1.02 }} transition={{ type: 'spring', stiffness: 300 }}>
-                <GlassCard style={{ padding: 0, overflow: 'hidden' }}>
-                  <div className="p-6">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                      style={{ background: 'rgba(74,124,111,0.2)', border: '1px solid rgba(74,124,111,0.3)' }}>
-                      <Eye size={22} style={{ color: '#4a7c6f' }} />
-                    </div>
-                    <h3 className="text-white mb-2" style={{ fontSize: 16, fontWeight: 700 }}>View Attendance</h3>
-                    <p style={{ fontSize: 13, color: 'rgba(218,215,205,0.6)', lineHeight: 1.6, marginBottom: 16 }}>
-                      Review attendance records, track student presence patterns, and generate reports.
-                    </p>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => setActiveTab('attendance')}
-                      className="w-full py-3 rounded-xl flex items-center justify-center gap-2"
-                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.2)', fontSize: 14, color: '#A3B18A', fontWeight: 600 }}
-                    >
-                      <Eye size={16} />
-                      View Records
-                    </motion.button>
-                  </div>
-                </GlassCard>
-              </motion.div>
-            </div>
-
-            {/* Quick stats */}
-            <GlassCard style={{ padding: 20 }}>
-              <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 600 }}>Today's Summary</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: 'Total Students', value: studentList.length, color: '#588157' },
-                  { label: 'Present Today', value: '—', color: '#4ade80' },
-                  { label: 'Absent Today', value: '—', color: '#f87171' },
-                  { label: 'Avg. Attendance', value: '92%', color: '#A3B18A' },
-                ].map(stat => (
-                  <div key={stat.label} className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(163,177,138,0.08)' }}>
-                    <p style={{ fontSize: 10, color: '#A3B18A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</p>
-                    <p className="text-white mt-1" style={{ fontSize: 20, fontWeight: 800, color: stat.color }}>{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
-          </motion.div>
-        )}
-
-        {/* Attendance view tab */}
-        {activeTab === 'attendance' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <h2 className="text-white" style={{ fontSize: 18, fontWeight: 700 }}>Attendance Records</h2>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setShowAttendanceModal(true)}
-                className="px-5 py-2.5 rounded-xl text-white flex items-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 13, fontWeight: 600 }}
-              >
-                <UserCheck size={14} />
-                Mark New Attendance
-              </motion.button>
+            <div>
+              <h2 className="text-white" style={{ fontSize: 22, fontWeight: 700 }}>{teacherName}</h2>
+              <p style={{ color: '#A3B18A', fontSize: 13 }}>Assigned Class & Section: Class {assignedClass}</p>
             </div>
 
-            <GlassCard style={{ padding: 20 }}>
-              <p className="text-white mb-4" style={{ fontSize: 14, fontWeight: 600 }}>Student List - Class {assignedClass}</p>
-              <div className="space-y-2">
-                {studentList.map(student => (
-                  <div key={student.id} className="flex items-center gap-4 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(163,177,138,0.06)' }}>
-                    <span style={{ fontSize: 12, color: '#A3B18A', width: 32, fontWeight: 600 }}>{student.roll}</span>
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs text-white flex-shrink-0" style={{ background: 'rgba(88,129,87,0.25)', fontWeight: 700 }}>
-                      {student.name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <span className="flex-1 text-white" style={{ fontSize: 13 }}>{student.name}</span>
-                    <span style={{ fontSize: 12, color: 'rgba(163,177,138,0.5)' }}>ID: {student.id}</span>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button onClick={() => setAttendanceModalOpen(true)} className="p-4 rounded-2xl text-left" style={{ background: 'rgba(88,129,87,0.16)', border: '1px solid rgba(88,129,87,0.35)' }}>
+                <UserCheck size={16} style={{ color: '#A3B18A' }} />
+                <p className="text-white mt-2" style={{ fontWeight: 700 }}>Mark Attendance</p>
+              </button>
+              <button onClick={() => setActiveTab('attendance')} className="p-4 rounded-2xl text-left" style={{ background: 'rgba(90,110,138,0.16)', border: '1px solid rgba(90,110,138,0.35)' }}>
+                <CalendarDays size={16} style={{ color: '#A3B18A' }} />
+                <p className="text-white mt-2" style={{ fontWeight: 700 }}>View Attendance</p>
+              </button>
+              <button onClick={() => setActiveTab('marks')} className="p-4 rounded-2xl text-left" style={{ background: 'rgba(122,106,74,0.16)', border: '1px solid rgba(122,106,74,0.35)' }}>
+                <Users size={16} style={{ color: '#A3B18A' }} />
+                <p className="text-white mt-2" style={{ fontWeight: 700 }}>View Students</p>
+              </button>
+            </div>
           </motion.div>
         )}
 
-        {/* Other tabs can remain simple placeholders */}
-        {!['overview', 'attendance'].includes(activeTab) && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <GlassCard style={{ padding: 40, textAlign: 'center' }}>
-              <p className="text-white" style={{ fontSize: 16, fontWeight: 600 }}>
-                {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} section
-              </p>
-              <p style={{ fontSize: 13, color: '#A3B18A', marginTop: 8 }}>Coming soon</p>
-            </GlassCard>
-          </motion.div>
+        {(activeTab === 'attendance' || activeTab === 'marks') && (
+          <GlassCard className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white" style={{ fontWeight: 700 }}>Class {assignedClass} Students</h3>
+              <button onClick={() => setAttendanceModalOpen(true)} className="px-3 py-1 rounded-lg" style={{ background: 'rgba(88,129,87,0.2)', color: '#A3B18A' }}>Mark / Update Today</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {mockStudents.map((student) => (
+                <button
+                  key={student.id}
+                  onClick={() => {
+                    setSelectedStudentId(student.id);
+                    setActiveTab('performance');
+                  }}
+                  className="p-3 rounded-xl text-left"
+                  style={{ border: '1px solid rgba(163,177,138,0.12)', background: selectedStudentId === student.id ? 'rgba(88,129,87,0.15)' : 'rgba(255,255,255,0.02)' }}
+                >
+                  <p className="text-white" style={{ fontSize: 13, fontWeight: 600 }}>{student.name}</p>
+                  <p style={{ color: '#A3B18A', fontSize: 12 }}>Roll {student.rollNo} · Fee {student.feeStatus}</p>
+                </button>
+              ))}
+            </div>
+          </GlassCard>
+        )}
+
+        {activeTab === 'performance' && (
+          <div className="space-y-4">
+            {!selectedStudent ? (
+              <GlassCard className="p-5"><p style={{ color: '#A3B18A' }}>Select a student from “View Attendance” or “View Students”.</p></GlassCard>
+            ) : (
+              <>
+                <GlassCard className="p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-white" style={{ fontSize: 17, fontWeight: 700 }}>{selectedStudent.name}</p>
+                      <p style={{ color: '#A3B18A', fontSize: 12 }}>Roll Number: {selectedStudent.rollNo}</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={() => setFilterType('1m')} className="px-3 py-1 rounded-lg" style={{ background: filterType === '1m' ? 'rgba(88,129,87,0.22)' : 'rgba(255,255,255,0.04)', color: '#A3B18A' }}>Last 1 Month</button>
+                      <button onClick={() => setFilterType('2m')} className="px-3 py-1 rounded-lg" style={{ background: filterType === '2m' ? 'rgba(88,129,87,0.22)' : 'rgba(255,255,255,0.04)', color: '#A3B18A' }}>Last 2 Months</button>
+                      <button onClick={() => setFilterType('custom')} className="px-3 py-1 rounded-lg" style={{ background: filterType === 'custom' ? 'rgba(88,129,87,0.22)' : 'rgba(255,255,255,0.04)', color: '#A3B18A' }}>Custom Month</button>
+                      {filterType === 'custom' && (
+                        <input
+                          type="month"
+                          value={customMonth}
+                          onChange={(e) => setCustomMonth(e.target.value)}
+                          className="px-2 py-1 rounded-lg"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.2)', color: '#DAD7CD' }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </GlassCard>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <GlassCard className="p-4"><p style={{ color: '#A3B18A', fontSize: 12 }}>Attendance % ({getMonthLabel(effectiveMonth)})</p><p className="text-white" style={{ fontSize: 24, fontWeight: 800 }}>{attendancePct}%</p></GlassCard>
+                  <GlassCard className="p-4"><p style={{ color: '#A3B18A', fontSize: 12 }}>Fee Status</p><p style={{ color: selectedStudent.feeStatus === 'Paid' ? '#4ade80' : '#f87171', fontSize: 24, fontWeight: 800 }}>{selectedStudent.feeStatus}</p></GlassCard>
+                  <GlassCard className="p-4"><p style={{ color: '#A3B18A', fontSize: 12 }}>Outstanding</p><p className="text-white" style={{ fontSize: 24, fontWeight: 800 }}>₹{selectedStudent.outstandingAmount.toLocaleString()}</p></GlassCard>
+                </div>
+
+                <GlassCard className="p-5">
+                  <p className="text-white mb-3" style={{ fontWeight: 700 }}>Attendance Calendar · {getMonthLabel(effectiveMonth)}</p>
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+                      <div key={d} className="text-center" style={{ color: '#A3B18A', fontSize: 11 }}>{d}</div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {calendarCells.map((cell, idx) => (
+                      <div
+                        key={`${cell.day}-${idx}`}
+                        className="h-14 rounded-lg p-1"
+                        style={{ border: '1px solid rgba(163,177,138,0.12)', background: 'rgba(255,255,255,0.02)' }}
+                      >
+                        {cell.day ? (
+                          <div className="h-full flex flex-col justify-between">
+                            <span style={{ color: '#DAD7CD', fontSize: 11 }}>{cell.day}</span>
+                            <span style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: cell.status === 'P' ? '#4ade80' : cell.status === 'A' ? '#f87171' : 'rgba(163,177,138,0.5)',
+                              alignSelf: 'flex-end',
+                            }}>
+                              {cell.status || '-'}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </GlassCard>
+              </>
+            )}
+          </div>
+        )}
+
+        {!['overview', 'attendance', 'marks', 'performance'].includes(activeTab) && (
+          <GlassCard className="p-5"><p style={{ color: '#A3B18A' }}>Demo section.</p></GlassCard>
         )}
       </div>
 
-      {/* Attendance Modal */}
       <AttendanceModal
-        isOpen={showAttendanceModal}
-        onClose={() => setShowAttendanceModal(false)}
+        open={attendanceModalOpen}
+        students={mockStudents}
         assignedClass={assignedClass}
+        todayKey={todayKey}
+        initialEntries={todayEntries}
+        onClose={() => setAttendanceModalOpen(false)}
+        onSave={handleSaveTodayAttendance}
       />
     </DashboardLayout>
   );
