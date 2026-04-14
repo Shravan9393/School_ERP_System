@@ -1,0 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* SF Pro Display fallback stack — uses system Apple fonts when available */
+:root {
+  --font-display: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --font-body: -apple-system, 'SF Pro Text', BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
