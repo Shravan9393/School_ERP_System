@@ -5,7 +5,7 @@ import {
   Home, Users, BookOpen, Clock, CreditCard, FileText, User, Bell, Settings,
   Calendar, BarChart2, LogOut, Menu, X, Search, ChevronRight, GraduationCap,
   LayoutDashboard, Clipboard, UserCheck, DollarSign, Receipt, Shield,
-  Layers, Table2, AlignJustify
+  Layers, Table2, AlignJustify, ArrowLeft
 } from 'lucide-react';
 import { useAuth, UserRole } from '../../context/AuthContext';
 interface NavItem {
@@ -114,7 +114,7 @@ export function DashboardLayout({ children, activeTab, onTabChange, title, subti
   return (
     <div className="min-h-screen relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f1e14 0%, #1a2e20 40%, #233b2a 100%)', fontFamily: 'var(--font-body)' }}>
       {/* Cursor Spotlight */}
-      <div className="fixed inset-0 pointer-events-none z-0" style={{ background: `radial-gradient(800px circle at ${mousePos.x}px ${mousePos.y}px, rgba(88,129,87,0.12), transparent 70%)` }} />
+      <div className="fixed inset-0 lg:left-64 pointer-events-none z-0" style={{ background: `radial-gradient(800px circle at ${mousePos.x}px ${mousePos.y}px, rgba(88,129,87,0.12), transparent 70%)` }} />
       {/* Ambient orbs */}
       <div className="fixed top-20 right-20 w-96 h-96 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(88,129,87,0.08) 0%, transparent 70%)', filter: 'blur(40px)' }} />
 
@@ -206,6 +206,20 @@ export function DashboardLayout({ children, activeTab, onTabChange, title, subti
         {/* Top Navbar */}
         <header className="sticky top-0 z-30 flex items-center gap-4 px-4 lg:px-6 h-16"
           style={{ background: 'rgba(10,20,14,0.7)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', borderBottom: '1px solid rgba(163,177,138,0.1)' }}>
+          {/* Back button - shown when not on overview */}
+          {activeTab !== 'overview' && (
+            <motion.button
+              whileHover={{ x: -3, scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onTabChange('overview')}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)' }}
+            >
+              <ArrowLeft size={16} style={{ color: '#A3B18A' }} />
+              <span className="hidden sm:inline" style={{ fontSize: 12, color: '#A3B18A', fontWeight: 500 }}>Back to Dashboard</span>
+            </motion.button>
+          )}
+
           <button className="lg:hidden p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }} onClick={() => setSidebarOpen(true)}>
             <Menu size={18} style={{ color: '#A3B18A' }} />
           </button>
@@ -259,6 +273,18 @@ export function DashboardLayout({ children, activeTab, onTabChange, title, subti
               style={{ background: `linear-gradient(135deg, ${accentColor}, #2d4a35)`, fontWeight: 700, fontSize: 11 }}>
               {user?.avatar}
             </div>
+
+            {/* Logout button */}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLogout}
+              className="p-2 rounded-xl transition-all group"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.1)' }}
+              title="Logout"
+            >
+              <LogOut size={16} className="text-[#A3B18A] group-hover:text-red-400 transition-colors" />
+            </motion.button>
           </div>
         </header>
 

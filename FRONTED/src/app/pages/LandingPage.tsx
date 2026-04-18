@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -42,28 +42,41 @@ export function LandingPage() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: -1000, y: -1000 });
-  const [scrollY, setScrollY] = useState(0);
+  const [scrolled, setScrolled] = useState(false); // FIX 4: boolean flag instead of raw scrollY to prevent per-pixel re-renders
   const frameRef = useRef<number | null>(null);
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
   const [formSent, setFormSent] = useState(false);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
-      frameRef.current = requestAnimationFrame(() => setMousePos({ x: e.clientX, y: e.clientY }));
+      // FIX 3: Cancel any pending RAF before scheduling a new one
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = requestAnimationFrame(() => {
+        setMousePos({ x: e.clientX, y: e.clientY });
+        frameRef.current = null;
+      });
     };
-    const onScroll = () => setScrollY(window.scrollY);
+
+    // FIX 4: Use a threshold so scroll state only flips once, not on every pixel
+    const onScroll = () => setScrolled(window.scrollY > 50);
+
     window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('scroll', onScroll);
-    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('scroll', onScroll); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('scroll', onScroll);
+      // FIX 3: Cancel any pending RAF on unmount to prevent state updates on dead component
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    };
   }, []);
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setFormSent(true);
     setTimeout(() => setFormSent(false), 4000);
     setContactForm({ name: '', email: '', message: '' });
-  };
+  }, []);
 
   return (
     <div className="min-h-screen relative" style={{ background: 'linear-gradient(160deg, #0a1a10 0%, #1a2e20 50%, #0f1e14 100%)', fontFamily: 'var(--font-body)', color: '#DAD7CD' }}>
@@ -77,32 +90,43 @@ export function LandingPage() {
 
       {/* NAVBAR */}
       <motion.nav
-        initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6 }}
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6 }}
         className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6"
-        style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 rounded-2xl"
+        style={{ paddingTop: 12, paddingBottom: 12 }}
+      >
+        <div
+          className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 rounded-2xl"
           style={{
-            background: scrollY > 50 ? 'rgba(10,26,16,0.85)' : 'rgba(10,26,16,0.4)',
-            backdropFilter: 'blur(30px)', WebkitBackdropFilter: 'blur(30px)',
+            // FIX 4: Use `scrolled` boolean, not raw scrollY
+            background: scrolled ? 'rgba(10,26,16,0.85)' : 'rgba(10,26,16,0.4)',
+            backdropFilter: 'blur(30px)',
+            WebkitBackdropFilter: 'blur(30px)',
             border: '1px solid rgba(163,177,138,0.15)',
-            transition: 'background 0.3s ease'
-          }}>
+            transition: 'background 0.3s ease',
+          }}
+        >
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)' }}>
               <GraduationCap size={16} className="text-white" />
             </div>
             <div>
-              <span className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em' }}>Greenfield Academy</span>
+              {/* FIX 5: Consistent branding — use "Sangam Public School" everywhere */}
+              <span className="text-white" style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em' }}>Sangam Public School</span>
             </div>
           </div>
 
           {/* Desktop nav links */}
           <div className="hidden md:flex items-center gap-1">
             {['Home', 'About', 'Features', 'Contact'].map(link => (
-              <a key={link} href={`#${link.toLowerCase()}`}
+              <a
+                key={link}
+                href={`#${link.toLowerCase()}`}
                 className="px-3 py-1.5 rounded-lg transition-colors hover:text-white"
-                style={{ fontSize: 13, color: 'rgba(218,215,205,0.7)' }}>
+                style={{ fontSize: 13, color: 'rgba(218,215,205,0.7)' }}
+              >
                 {link}
               </a>
             ))}
@@ -110,14 +134,21 @@ export function LandingPage() {
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => navigate('/login')}
               className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-white transition-all"
-              style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(88,129,87,0.3)' }}>
+              style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(88,129,87,0.3)' }}
+            >
               <Shield size={14} />
               SAP Login
             </motion.button>
-            <button className="md:hidden p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }} onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <button
+              className="md:hidden p-2 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.05)' }}
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+            >
               {mobileMenuOpen ? <X size={18} style={{ color: '#A3B18A' }} /> : <Menu size={18} style={{ color: '#A3B18A' }} />}
             </button>
           </div>
@@ -126,17 +157,29 @@ export function LandingPage() {
         {/* Mobile menu */}
         <AnimatePresence>
           {mobileMenuOpen && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
               className="md:hidden mt-2 mx-4 p-4 rounded-2xl space-y-1"
-              style={{ background: 'rgba(10,26,16,0.95)', backdropFilter: 'blur(30px)', border: '1px solid rgba(163,177,138,0.15)' }}>
+              style={{ background: 'rgba(10,26,16,0.95)', backdropFilter: 'blur(30px)', border: '1px solid rgba(163,177,138,0.15)' }}
+            >
               {['Home', 'About', 'Features', 'Contact'].map(link => (
-                <a key={link} href={`#${link.toLowerCase()}`} onClick={() => setMobileMenuOpen(false)}
+                <a
+                  key={link}
+                  href={`#${link.toLowerCase()}`}
+                  onClick={() => setMobileMenuOpen(false)}
                   className="block px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors"
-                  style={{ fontSize: 14, color: '#DAD7CD' }}>{link}</a>
+                  style={{ fontSize: 14, color: '#DAD7CD' }}
+                >
+                  {link}
+                </a>
               ))}
-              <button onClick={() => navigate('/login')}
+              <button
+                onClick={() => navigate('/login')}
                 className="w-full mt-2 py-2.5 rounded-xl text-white"
-                style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 14, fontWeight: 600 }}>
+                style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 14, fontWeight: 600 }}
+              >
                 SAP Login
               </button>
             </motion.div>
@@ -146,68 +189,113 @@ export function LandingPage() {
 
       {/* HERO SECTION */}
       <section id="home" className="relative min-h-screen flex flex-col items-center justify-center pt-24 px-4">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-center max-w-4xl mx-auto relative z-10">
-
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="text-center max-w-4xl mx-auto relative z-10"
+        >
           {/* Badge */}
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.4 }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8"
-            style={{ background: 'rgba(88,129,87,0.15)', border: '1px solid rgba(88,129,87,0.3)', backdropFilter: 'blur(10px)' }}>
+            style={{ background: 'rgba(88,129,87,0.15)', border: '1px solid rgba(88,129,87,0.3)', backdropFilter: 'blur(10px)' }}
+          >
             <Zap size={12} style={{ color: '#A3B18A' }} />
-            <span style={{ fontSize: 12, color: '#A3B18A', fontWeight: 500 }}>School Administration & Governance Platform</span>
+            <span style={{ fontSize: 12, color: '#A3B18A', fontWeight: 500 }}>School Administration &amp; Governance Platform</span>
           </motion.div>
 
-          {/* School Name */}
-          <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-            style={{ fontSize: 'clamp(2.5rem, 8vw, 5rem)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05, color: 'white', fontFamily: 'var(--font-display)' }}>
-            Greenfield
-            <span className="block" style={{ background: 'linear-gradient(135deg, #A3B18A 0%, #588157 50%, #DAD7CD 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-              Academy
+          {/* School Name — FIX 5: Unified branding, no "Sangam Public Scool" */}
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            style={{ fontSize: 'clamp(2.5rem, 8vw, 5rem)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05, color: 'white', fontFamily: 'var(--font-display)' }}
+          >
+            Sangam
+            <span
+              className="block"
+              style={{ background: 'linear-gradient(135deg, #A3B18A 0%, #588157 50%, #DAD7CD 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}
+            >
+              Public School
             </span>
           </motion.h1>
 
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
-            className="mt-6 mx-auto max-w-xl" style={{ fontSize: 'clamp(1rem, 2.5vw, 1.15rem)', color: 'rgba(218,215,205,0.7)', lineHeight: 1.7 }}>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7 }}
+            className="mt-6 mx-auto max-w-xl"
+            style={{ fontSize: 'clamp(1rem, 2.5vw, 1.15rem)', color: 'rgba(218,215,205,0.7)', lineHeight: 1.7 }}
+          >
             A unified digital platform for 10+2 school management — attendance, fees, timetable, marks, and more, beautifully integrated.
           </motion.p>
 
           {/* CTA Buttons */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-10">
-            <motion.button whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-10"
+          >
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => navigate('/login')}
               className="flex items-center gap-2.5 px-8 py-4 rounded-2xl text-white"
-              style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 15, fontWeight: 600, boxShadow: '0 8px 30px rgba(88,129,87,0.4)' }}>
+              style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)', fontSize: 15, fontWeight: 600, boxShadow: '0 8px 30px rgba(88,129,87,0.4)' }}
+            >
               <Shield size={16} /> Access SAP Portal <ArrowRight size={16} />
             </motion.button>
-            <motion.button whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
+            <motion.button
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               className="flex items-center gap-2 px-8 py-4 rounded-2xl"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.2)', fontSize: 15, color: '#A3B18A', fontWeight: 600, backdropFilter: 'blur(10px)' }}>
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.2)', fontSize: 15, color: '#A3B18A', fontWeight: 600, backdropFilter: 'blur(10px)' }}
+            >
               Explore Features <ChevronRight size={16} />
             </motion.button>
           </motion.div>
         </motion.div>
 
         {/* Hero image card */}
-        <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1, duration: 0.8 }}
-          className="relative mt-16 w-full max-w-5xl mx-auto px-4 z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 60 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1, duration: 0.8 }}
+          className="relative mt-16 w-full max-w-5xl mx-auto px-4 z-10"
+        >
           <div className="rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(163,177,138,0.15)', boxShadow: '0 40px 100px rgba(0,0,0,0.5)' }}>
-            <img src={SCHOOL_IMAGES.hero} alt="Greenfield Academy" className="w-full h-64 sm:h-80 object-cover" style={{ filter: 'brightness(0.7) saturate(0.8)' }} />
+            <img src={SCHOOL_IMAGES.hero} alt="Sangam Public School" className="w-full h-64 sm:h-80 object-cover" style={{ filter: 'brightness(0.7) saturate(0.8)' }} />
             <DraggableImageStack />
           </div>
         </motion.div>
 
         {/* Stats */}
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.3 }}
-          className="w-full max-w-4xl mx-auto px-4 mt-8 z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.3 }}
+          className="w-full max-w-4xl mx-auto px-4 mt-8 z-10"
+        >
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {stats.map((stat, i) => {
+            {stats.map((stat) => {
               const Icon = stat.icon;
               return (
-                <motion.div key={stat.label} whileHover={{ y: -4, scale: 1.02 }} transition={{ type: 'spring', stiffness: 300 }}
+                <motion.div
+                  key={stat.label}
+                  whileHover={{ y: -4, scale: 1.02 }}
+                  // FIX 1: transition must not be a sibling prop to whileInView at the same level
+                  // when both entry animation and hover need different transitions.
+                  // Use `layout` or nest via variants instead — here a single transition
+                  // covers hover since this card has no whileInView competing transition.
+                  transition={{ type: 'spring', stiffness: 300 }}
                   className="p-4 rounded-2xl text-center"
-                  style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.12)' }}>
+                  style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.12)' }}
+                >
                   <Icon size={18} style={{ color: '#588157', margin: '0 auto 8px' }} />
                   <p className="text-white" style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>{stat.value}</p>
                   <p style={{ fontSize: 11, color: '#A3B18A', marginTop: 2 }}>{stat.label}</p>
@@ -221,7 +309,12 @@ export function LandingPage() {
       {/* FEATURES SECTION */}
       <section id="features" className="relative py-24 px-4">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4" style={{ background: 'rgba(88,129,87,0.1)', border: '1px solid rgba(88,129,87,0.2)' }}>
               <Star size={12} style={{ color: '#A3B18A' }} />
               <span style={{ fontSize: 12, color: '#A3B18A' }}>Platform Features</span>
@@ -235,11 +328,25 @@ export function LandingPage() {
             {features.map((feature, i) => {
               const Icon = feature.icon;
               return (
-                <motion.div key={feature.title}
-                  initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
-                  whileHover={{ y: -6, scale: 1.02 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                // FIX 1: Duplicate `transition` props — the second one (for whileHover) was silently
+                // overriding the first (for whileInView delay), breaking staggered entry animations.
+                // Solution: use the `variants` pattern or pass transition inside whileHover via
+                // the `transition` prop scoped to that gesture using Motion's gesture-specific API.
+                // Framer/Motion supports per-gesture transitions via the `transition` prop on the
+                // component for default, but whileHover/whileTap respect a `transition` defined
+                // inside those objects when using the object form. Since JSX doesn't support that
+                // directly, we split: keep the entry `transition` for whileInView, and rely on
+                // Motion's default spring for hover (which is fine here).
+                <motion.div
+                  key={feature.title}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.08 }}       // ← entry transition
+                  whileHover={{ y: -6, scale: 1.02 }}    // ← hover uses Motion default spring (no conflict)
                   className="p-6 rounded-2xl group cursor-default"
-                  style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.1)', transition: 'border-color 0.3s ease' }}>
+                  style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.1)', transition: 'border-color 0.3s ease' }}
+                >
                   <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4" style={{ background: `${feature.color}22`, border: `1px solid ${feature.color}44` }}>
                     <Icon size={20} style={{ color: feature.color }} />
                   </div>
@@ -255,31 +362,41 @@ export function LandingPage() {
       {/* ABOUT SECTION */}
       <section id="about" className="relative py-24 px-4">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+          >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-6" style={{ background: 'rgba(88,129,87,0.1)', border: '1px solid rgba(88,129,87,0.2)' }}>
               <GraduationCap size={12} style={{ color: '#A3B18A' }} />
-              <span style={{ fontSize: 12, color: '#A3B18A' }}>About Greenfield Academy</span>
+              {/* FIX 5: Consistent school name in badge */}
+              <span style={{ fontSize: 12, color: '#A3B18A' }}>About Sangam Public School</span>
             </div>
             <h2 className="text-white mb-6" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.5rem)', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
               32 years of shaping<br /><span style={{ color: '#A3B18A' }}>brilliant minds</span>
             </h2>
             <p style={{ fontSize: 14, color: 'rgba(218,215,205,0.7)', lineHeight: 1.8, marginBottom: 16 }}>
-              Greenfield Academy is a CBSE-affiliated 10+2 school committed to holistic education. Since 1994, we have nurtured over 15,000 students with a blend of academics, sports, and values.
+              Sangam Public School is a CBSE-affiliated 10+2 school committed to holistic education. Since 1994, we have nurtured over 15,000 students with a blend of academics, sports, and values.
             </p>
             <p style={{ fontSize: 14, color: 'rgba(218,215,205,0.7)', lineHeight: 1.8 }}>
-              Our digital ERP system — <strong style={{ color: '#A3B18A' }}>GreenSAP</strong> — brings the entire school administration online, reducing paperwork and empowering every stakeholder.
+              Our digital ERP system — <strong style={{ color: '#A3B18A' }}>SangamSAP</strong> — brings the entire school administration online, reducing paperwork and empowering every stakeholder.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              {[['CBSE Affiliated', CheckCircle], ['ISO Certified', CheckCircle], ['Smart Campus', CheckCircle]].map(([label, Icon]: any) => (
+              {(['CBSE Affiliated', 'ISO Certified', 'Smart Campus'] as const).map((label) => (
                 <div key={label} className="flex items-center gap-2">
-                  <Icon size={14} style={{ color: '#588157' }} />
+                  <CheckCircle size={14} style={{ color: '#588157' }} />
                   <span style={{ fontSize: 13, color: '#A3B18A' }}>{label}</span>
                 </div>
               ))}
             </div>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}>
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+          >
             <div className="relative rounded-3xl overflow-hidden" style={{ boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
               <img src={SCHOOL_IMAGES.about} alt="Students learning" className="w-full h-80 object-cover" style={{ filter: 'brightness(0.75) saturate(0.9)' }} />
               <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 60%, rgba(10,26,16,0.8) 100%)' }} />
@@ -296,7 +413,12 @@ export function LandingPage() {
       {/* ANNOUNCEMENTS SECTION */}
       <section id="announcements" className="relative py-24 px-4">
         <div className="max-w-4xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4" style={{ background: 'rgba(88,129,87,0.1)', border: '1px solid rgba(88,129,87,0.2)' }}>
               <Bell size={12} style={{ color: '#A3B18A' }} />
               <span style={{ fontSize: 12, color: '#A3B18A' }}>Live Announcements</span>
@@ -308,11 +430,17 @@ export function LandingPage() {
 
           <div className="space-y-3">
             {announcements.map((ann, i) => (
-              <motion.div key={ann.id}
-                initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}
-                whileHover={{ x: 6, scale: 1.01 }} transition={{ type: 'spring', stiffness: 300 }}
+              // FIX 1: Same duplicate `transition` bug as features — split entry vs hover cleanly
+              <motion.div
+                key={ann.id}
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.06 }}      // ← entry transition
+                whileHover={{ x: 6, scale: 1.01 }}    // ← hover uses Motion default spring
                 className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer group"
-                style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.08)' }}>
+                style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.08)' }}
+              >
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: ann.color }} />
                 <div className="flex-1">
                   <p className="text-white" style={{ fontSize: 14, fontWeight: 500 }}>{ann.title}</p>
@@ -329,7 +457,12 @@ export function LandingPage() {
       {/* CONTACT SECTION */}
       <section id="contact" className="relative py-24 px-4">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4" style={{ background: 'rgba(88,129,87,0.1)', border: '1px solid rgba(88,129,87,0.2)' }}>
               <Mail size={12} style={{ color: '#A3B18A' }} />
               <span style={{ fontSize: 12, color: '#A3B18A' }}>Get in Touch</span>
@@ -341,11 +474,16 @@ export function LandingPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Contact info */}
-            <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="space-y-4"
+            >
               {[
                 { icon: MapPin, label: 'Address', value: '123 Education Road, Green Valley,\nNew Delhi – 110 001' },
-                { icon: Phone, label: 'Phone', value: '+91 11 2345 6789' },
-                { icon: Mail, label: 'Email', value: 'info@greenfieldacademy.edu.in' },
+                { icon: Phone, label: 'Phone', value: '+91 8318941475, +916288701672, +91 9304723967' },
+                { icon: Mail, label: 'Email', value: 'sangampublicschool9@gmail.com' },
                 { icon: Clock, label: 'Hours', value: 'Mon – Sat: 8:00 AM – 4:00 PM' },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="flex items-start gap-4 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(163,177,138,0.1)' }}>
@@ -361,33 +499,58 @@ export function LandingPage() {
             </motion.div>
 
             {/* Contact form */}
-            <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}>
-              <form onSubmit={handleContactSubmit} className="p-6 rounded-2xl space-y-4"
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+            >
+              {/* FIX 2: Added `action="#"` to prevent any default navigation and be explicit */}
+              <form onSubmit={handleContactSubmit} action="#" className="p-6 rounded-2xl space-y-4"
                 style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)', border: '1px solid rgba(163,177,138,0.12)' }}>
                 <div>
                   <label style={{ fontSize: 12, color: '#A3B18A', fontWeight: 600 }}>Full Name</label>
-                  <input value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} required
+                  <input
+                    value={contactForm.name}
+                    onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))}
+                    required
                     placeholder="Your name"
                     className="w-full mt-1.5 px-4 py-3 rounded-xl outline-none transition-all"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }} />
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }}
+                  />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: '#A3B18A', fontWeight: 600 }}>Email</label>
-                  <input value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} required type="email"
+                  <input
+                    value={contactForm.email}
+                    onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))}
+                    required
+                    type="email"
                     placeholder="you@example.com"
                     className="w-full mt-1.5 px-4 py-3 rounded-xl outline-none transition-all"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }} />
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }}
+                  />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: '#A3B18A', fontWeight: 600 }}>Message</label>
-                  <textarea value={contactForm.message} onChange={e => setContactForm(f => ({ ...f, message: e.target.value }))} required rows={4}
+                  <textarea
+                    value={contactForm.message}
+                    onChange={e => setContactForm(f => ({ ...f, message: e.target.value }))}
+                    required
+                    rows={4}
                     placeholder="Your message..."
                     className="w-full mt-1.5 px-4 py-3 rounded-xl outline-none transition-all resize-none"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }} />
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(163,177,138,0.15)', color: '#DAD7CD', fontSize: 14 }}
+                  />
                 </div>
-                <motion.button type="submit" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                <motion.button
+                  type="submit"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   className="w-full py-3 rounded-xl text-white"
-                  style={{ background: formSent ? '#3A5A40' : 'linear-gradient(135deg, #588157, #3A5A40)', fontWeight: 600, fontSize: 14 }}>
+                  // FIX 7: Use consistent gradient for both states; `formSent` was breaking to a flat color
+                  style={{ background: formSent ? 'linear-gradient(135deg, #3A5A40, #2d4a33)' : 'linear-gradient(135deg, #588157, #3A5A40)', fontWeight: 600, fontSize: 14, transition: 'background 0.4s ease' }}
+                >
                   {formSent ? '✓ Message Sent!' : 'Send Message'}
                 </motion.button>
               </form>
@@ -405,7 +568,7 @@ export function LandingPage() {
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #588157, #3A5A40)' }}>
                   <GraduationCap size={16} className="text-white" />
                 </div>
-                <span className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Greenfield Academy</span>
+                <span className="text-white" style={{ fontSize: 14, fontWeight: 700 }}>Sangam Public School</span>
               </div>
               <p style={{ fontSize: 12, color: 'rgba(218,215,205,0.5)', lineHeight: 1.7 }}>
                 CBSE Affiliated School (Affil. No. 2730211)<br />Empowering excellence since 1994
@@ -414,7 +577,7 @@ export function LandingPage() {
             <div>
               <p className="text-white mb-3" style={{ fontSize: 13, fontWeight: 600 }}>Quick Links</p>
               <div className="space-y-2">
-                {['Academic Calendar', 'Admission Process', 'Fee Structure', 'Results & Reports'].map(link => (
+                {['Academic Calendar', 'Admission Process', 'Fee Structure', 'Results &amp; Reports'].map(link => (
                   <p key={link} className="cursor-pointer transition-colors hover:text-[#A3B18A]" style={{ fontSize: 12, color: 'rgba(218,215,205,0.5)' }}>{link}</p>
                 ))}
               </div>
@@ -429,10 +592,12 @@ export function LandingPage() {
             </div>
           </div>
           <div className="pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderColor: 'rgba(163,177,138,0.1)' }}>
-            <p style={{ fontSize: 11, color: 'rgba(218,215,205,0.35)' }}>© 2026 Greenfield Academy. All rights reserved.</p>
-            <button onClick={() => navigate('/login')}
+            <p style={{ fontSize: 11, color: 'rgba(218,215,205,0.35)' }}>© 2026 Sangam Public School. All rights reserved.</p>
+            <button
+              onClick={() => navigate('/login')}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-white"
-              style={{ background: 'rgba(88,129,87,0.2)', border: '1px solid rgba(88,129,87,0.3)', fontSize: 12 }}>
+              style={{ background: 'rgba(88,129,87,0.2)', border: '1px solid rgba(88,129,87,0.3)', fontSize: 12 }}
+            >
               <Shield size={12} /> Access SAP Portal
             </button>
           </div>
