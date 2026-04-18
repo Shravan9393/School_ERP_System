@@ -1,5 +1,72 @@
+// import { createBrowserRouter, Navigate } from 'react-router';
+// import { useAuth } from './context/AuthContext';
+// import { LandingPage } from './pages/LandingPage';
+// import { LoginPage } from './pages/LoginPage';
+// import { StudentDashboard } from './pages/StudentDashboard';
+// import { TeacherDashboard } from './pages/TeacherDashboard';
+// import { ManagerDashboard } from './pages/ManagerDashboard';
+// import { CashierDashboard } from './pages/CashierDashboard';
+// import { AdminDashboard } from './pages/AdminDashboard';
+// import { ROLE_DASHBOARD } from './context/AuthContext';
+
+// function DashboardRedirect() {
+//   const { user } = useAuth();
+//   if (!user) return <Navigate to="/login" replace />;
+//   return <Navigate to={ROLE_DASHBOARD[user.role]} replace />;
+// }
+
+// function ProtectedRoute({ children }: { children: React.ReactNode }) {
+//   const { user, isLoading } = useAuth();
+//   if (isLoading) return (
+//     <div className="min-h-screen flex items-center justify-center" style={{ background: '#1a2e20' }}>
+//       <div className="w-8 h-8 border-2 border-[#588157] border-t-transparent rounded-full animate-spin" />
+//     </div>
+//   );
+//   if (!user) return <Navigate to="/login" replace />;
+//   return <>{children}</>;
+// }
+
+// export const router = createBrowserRouter([
+//   { path: '/', Component: LandingPage },
+//   { path: '/login', Component: LoginPage },
+//   {
+//     path: '/dashboard',
+//     element: <ProtectedRoute><DashboardRedirect /></ProtectedRoute>,
+//   },
+//   {
+//     path: '/dashboard/student',
+//     element: <ProtectedRoute><StudentDashboard /></ProtectedRoute>,
+//   },
+//   {
+//     path: '/dashboard/teacher',
+//     element: <ProtectedRoute><TeacherDashboard /></ProtectedRoute>,
+//   },
+//   {
+//     path: '/dashboard/manager',
+//     element: <ProtectedRoute><ManagerDashboard /></ProtectedRoute>,
+//   },
+//   {
+//     path: '/dashboard/cashier',
+//     element: <ProtectedRoute><CashierDashboard /></ProtectedRoute>,
+//   },
+//   {
+//     path: '/dashboard/admin',
+//     element: <ProtectedRoute><AdminDashboard /></ProtectedRoute>,
+//   },
+//   { path: '*', element: <Navigate to="/" replace /> },
+// ]);
+
+
+
+
+
+
+
+
+
+
 import { createBrowserRouter, Navigate } from 'react-router';
-import { useAuth } from './context/AuthContext';
+import { useAuth, UserRole } from './context/AuthContext';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { StudentDashboard } from './pages/StudentDashboard';
@@ -15,14 +82,18 @@ function DashboardRedirect() {
   return <Navigate to={ROLE_DASHBOARD[user.role]} replace />;
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: UserRole }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#1a2e20' }}>
-      <div className="w-8 h-8 border-2 border-[#588157] border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  if (isLoading)
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#1a2e20' }}>
+        <div className="w-8 h-8 border-2 border-[#588157] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   if (!user) return <Navigate to="/login" replace />;
+  if (allowedRole && user.role !== allowedRole) {
+    return <Navigate to={ROLE_DASHBOARD[user.role]} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -31,27 +102,51 @@ export const router = createBrowserRouter([
   { path: '/login', Component: LoginPage },
   {
     path: '/dashboard',
-    element: <ProtectedRoute><DashboardRedirect /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute>
+        <DashboardRedirect />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/dashboard/student',
-    element: <ProtectedRoute><StudentDashboard /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute allowedRole="student">
+        <StudentDashboard />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/dashboard/teacher',
-    element: <ProtectedRoute><TeacherDashboard /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute allowedRole="teacher">
+        <TeacherDashboard />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/dashboard/manager',
-    element: <ProtectedRoute><ManagerDashboard /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute allowedRole="manager">
+        <ManagerDashboard />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/dashboard/cashier',
-    element: <ProtectedRoute><CashierDashboard /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute allowedRole="cashier">
+        <CashierDashboard />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/dashboard/admin',
-    element: <ProtectedRoute><AdminDashboard /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute allowedRole="admin">
+        <AdminDashboard />
+      </ProtectedRoute>
+    ),
   },
   { path: '*', element: <Navigate to="/" replace /> },
 ]);
